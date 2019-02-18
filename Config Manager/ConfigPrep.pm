@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 package ConfigPrep;
 
-# Many of the sensitive content have been omitted to protect the confidentiality of the company.
+# Latest CHange 9 Sep 2018: Introduced if conditions to handle situations where $idx and $jdx are not found.
 
 #Legacy Code Reference
 sub writeToConfig {
@@ -10,7 +10,7 @@ sub writeToConfig {
 #    print "$refFile\n";
 
     use FindBin;
-    use lib "$FindBin::<Dir>/pl5lib"; #That directory contains various custom installed perl libraries
+    use lib "$FindBin::/home/ownccr/rgClient/pl5lib"; #That directory contains various custom installed perl libraries
 
     use strict;
     use warnings;
@@ -31,7 +31,7 @@ sub writeToConfig {
         
         my $cfgname = $sheet->{Cells}[$row][0]->{Val};
 #        printf ( "L28: cfgname is %s\n", $cfgname );
-        open($fh, '>', "<Dir>/ConfigTool/$cfgname.cfg"); #Open file, writing (">" form) to it
+        open($fh, '>', "/home/ownccr/rgClient/ConfigTool/$cfgname.cfg"); #Open file, writing (">" form) to it
 
         
         foreach my $col ( 1 .. $sheet->{MaxCol} ) {
@@ -60,14 +60,14 @@ sub writeToConfig {
 sub retrieveConfig {
 
     use FindBin;
-    use lib "$FindBin::<Dir>/pl5lib";
+    use lib "$FindBin::/home/ownccr/rgClient/pl5lib";
 
     use strict;
     use warnings;
 
     use Excel::Writer::XLSX;
     
-    my $workbook = Excel::Writer::XLSX->new("<Dir>/ConfigTool/configr.xlsx");
+    my $workbook = Excel::Writer::XLSX->new("/home/ownccr/rgClient/ConfigTool/configr.xlsx");
     
     my $worksheet = $workbook ->add_worksheet();
     
@@ -82,7 +82,7 @@ sub retrieveConfig {
     while (<FH>){
         chomp;
 #        print "$_\n";
-        my @list = split (/\~/, $_);
+        my @list = split (/\`/, $_);
 #        print join(", ", @list);
 #        print "\nnext line\n";
         my $linecount = 1;
@@ -114,22 +114,23 @@ sub retrieveConfig {
             
             # Check Src Keys Lookup exists Corresponding Key Lookup File (and vice versa), and whether it exists in Src Key
             # -------------------------------------------------------------------------------------
-            # Check if <Condition1>
+            # Check if Src Keys Lookup exists in Source Key
             elsif ( $x > 0 && $y ==12 && $list[16] ne "" && $c !~ $list[16] ) {
                 $worksheet->write($x, $y++, $c, $textFormat1);
             }            
-            # Check if <Condition2>
-            elsif ( $x > 0 && $y ==16 && $c eq "" && $list[12] =~ /<pattern>/i ) {
+            # Check if Src Keys Lookup should exist but isn't (Certain columns present in Src key)
+            elsif ( $x > 0 && $y ==16 && $c eq "" && $list[12] =~ /trade[ _]n|trade[ _]i|component[ _]i|deal[ _]n/i ) {
                 $worksheet->write($x, $y++, $c, $bgFormat);
             }
-            # Check if <Condition3>
+            # Check if Lookup file is missing/wrong when Src Keys Lookup is available (wrong: != /home/ownccr/rgClient/lookup/*id_lookup.csv regex)
+#            elsif ( $x > 0 && $y ==20 && $list[16] ne "" && $c !~ /\/home\/ownccr\/rgClient\/lookup\/[ct]id_lookup.csv/ ) {
             elsif ( $x > 0 && $y ==20 ) {
-                # we consider 2 scenarios: <scenario1>:
-                if ( $list[16] ne "" && $c !~ /<pattern>/ ) {
+                # we consider 2 scenarios: src key lookup is defined but keylookup file is wrong:
+                if ( $list[16] ne "" && $c !~ /\/home\/ownccr\/rgClient\/lookup\/[ct]id_lookup.csv/ ) {
                     $worksheet->write($x, $y++, $c, $bgFormat1);
                 }
-                # and <scenario2>
-                elsif ( $list[16] eq "" && ( $c !~ /<pattern>/ && $c ne "" ) ) {
+                # and src key lookup is empty and key lookup file line is wrongly formatted
+                elsif ( $list[16] eq "" && ( $c !~ /\/home\/ownccr\/rgClient\/lookup\/[ct]id_lookup.csv/ && $c ne "" ) ) {
                     $worksheet->write($x, $y++, $c, $bgFormat1);
                 }
                 else {
@@ -153,11 +154,12 @@ sub retrieveConfig {
 sub getMapping {
     
     use FindBin;
-    use lib "$FindBin::<Dir>";
+    use lib "$FindBin::/home/ownccr/rgClient/pl5lib";
 
     use strict;
     use warnings;
     use Data::Dumper;
+    use utf8;
     
     #Get the unix variables ( 1- src head 2- tgt head 3- src del 4- tgt del)
     my $srcHeadString = $_[1] or die "Source Headers unspecified";
@@ -172,6 +174,8 @@ sub getMapping {
     
     my @srcHead = split /\Q$sDel/, $srcHeadString; #\Q ensure it escapes properly
     my @tgtHead = split /\Q$tDel/, $tgtHeadString;
+    @srcHead = grep(!/[ _]TIME/i, @srcHead );
+    @tgtHead = grep(!/[ _]TIME/i, @tgtHead );
     print "srcHead_1 is $srcHead[0]\n";
     print "srcHead_1 is $srcHead[1]\n";
     print "srcHead_1 is $srcHead[2]\n";
@@ -180,43 +184,51 @@ sub getMapping {
     my @srcHeadFinal = @srcHead;
     my @tgtHeadFinal = @tgtHead;
     my $mapping;
-    `dos2unix -q col_ref.csv`;
+    `dos2unix -k -q col_ref.csv`;
     for my $i (0 .. $#srcHead) {
         print "i is $i\n";
         print "srcHead is $srcHead[$i], tgtHead is $tgtHead[$i]\n";
-        #If just nice <perfect situation>
+        #If just nice headers from src,tgt aligned in same index, great!
         if ( $srcHead[$i] eq $tgtHead[$i] ) {
             print "L180 $srcHead[$i]: found srcHead i = tgtHead i\n";
             $mapping .= $srcHead[$i] . ':' . $tgtHead[$i] . ';'; #Append these stuff to string in the format "srcarr:tgtarr;"
             undef $srcHeadFinal[$i];
             undef $tgtHeadFinal[$i];
         }
-        #But unfortunately <less than ideal but doable situation>
+        #But unfortunately maybe tgt has extra column misaligning everything, then we need this
         elsif ( grep( /^$srcHead[$i]/, @tgtHead ) ) {
             print "L187 $srcHead[$i]: grep for srchead i in tgthead\n";
             my ($idx) = grep { $tgtHead[$_] eq $srcHead[$i] } 0..$#tgtHead; #Search in @tgthead for $srcHead[$i], if found get index
-            $mapping .= $srcHead[$i] . ':' . $tgtHead[$idx] . ';';
-            undef $srcHeadFinal[$i];
-            undef $tgtHeadFinal[$idx];
+            if ( (defined $idx) && ($idx ne '') ) {
+                $mapping .= $srcHead[$i] . ':' . $tgtHead[$idx] . ';';
+                undef $srcHeadFinal[$i];
+                undef $tgtHeadFinal[$idx];
+                undef $idx;
+            }
+            
         }
         
-        #Lastly: For <bad situations>
+        #Lastly: For situations where src and tgt MAY BE different but supposed to map together
         # Custom mapping file will contain src_col~tgt_col entries, working similarly to tid_lookup.csv
         # We search for src_col and get corresponding tgt_col values, using an array to manage duplicates
         # then search the tgt_col to see if exists in @tgt_head, if found then map it.
         
-        elsif ( `grep "$srcHead[$i]" <Dir>/lookup/col_ref.csv` ) { #If mapref has a custom mapping available
+        elsif ( `grep "$srcHead[$i]" /home/ownccr/rgClient/lookup/col_ref.csv` ) { #If mapref has a custom mapping available
             print "L200 $srcHead[$i]: refering to external file\n";
-            my @srcMap = split(/^/m,`grep "$srcHead[$i]" <Dir>/lookup/col_ref.csv | cut -d '~' -f 2`); #Bad to repeat myself but bleh
+            my @srcMap = split(/^/m,`grep "$srcHead[$i]" /home/ownccr/rgClient/lookup/col_ref.csv | cut -d '~' -f 2`); #Bad to repeat myself but bleh
             chomp @srcMap;
             print "$srcMap[0]\n";
             print "$srcMap[1]\n";
             for my $j (0 .. $#srcMap) {
                 if ( grep( /^$srcMap[$j]/, @tgtHead ) ) {
                     my ($jdx) = grep { $tgtHead[$_] eq $srcMap[$j] } 0..$#tgtHead;
-                    $mapping .= $srcHead[$i] . ':' . $tgtHead[$jdx] . ';';
-                    undef $srcHeadFinal[$i];
-                    undef $tgtHeadFinal[$jdx];
+                    if ( (defined $jdx) && ($jdx ne '') ) {
+                        $mapping .= $srcHead[$i] . ':' . $tgtHead[$jdx] . ';';
+                        undef $srcHeadFinal[$i];
+                        undef $tgtHeadFinal[$jdx];
+                        undef $jdx;
+                    }
+                    
                     last; #Break out of for loop
                 }
             } #End sub for loop
@@ -230,6 +242,10 @@ sub getMapping {
     @srcHeadFinal = grep defined, @srcHeadFinal;
     @tgtHeadFinal = grep defined, @tgtHeadFinal;
     if (@srcHeadFinal && @tgtHeadFinal) { #if array still contain stuff/ not all is mapped
+        print "srcHead_1st is $srcHeadFinal[0]\n";
+        print "srcHead_2 is $srcHeadFinal[1]\n";
+        print "tgtHead_1st is $tgtHeadFinal[0]\n";
+        print "tgtHead_2 is $tgtHeadFinal[1]\n";
         print "nokori array da na\n";
         $mapping="error";
     }
