@@ -1,8 +1,8 @@
 #!/bin/bash
 
-#(Ghetto) Script: Provide a argument .txt file of all the files.
-# Check and Read Config: This script will then copy all the config files to /home/ownccr/rgClient/ConfigTool and summarise into xlsx file
-# Write Config from XLSX: Write from xlsx file to new config files at /home/ownccr/rgClient/ConfigTool (xlsx file reference should not be placed at that directory)
+# Script: Provide a argument .txt file
+# Check and Read Config: This script will then copy all the config files to $OUTDIR and summarise into xlsx file
+# Write Config from XLSX: Write from xlsx file to new config files at $OUTDIR (xlsx file reference should not be placed at that directory)
 # Parse Src/Tgt: Experimentary platform - Parse the files in src/tgt folders then try to determine correct mappings/uniq keys and generate new cfg if necessary
 # Update Name Parameters: Match all naming parameters of config files to config file name.
 # Update Split File config: Apply any changes from main config to its splitted file configs.
@@ -12,8 +12,12 @@
 
 function main() {
 
+OUTDIR=<DIR1> #Removed to preserve confidentiality
+HOMEDIR=<DIR2> #Removed to preserve confidentiality
+REPORTDIR=<DIR3> #Removed to preserve confidentiality
+
 #Script introduces itself
-echo 'General Purpose support tool used to automate some aspects of handling config files. Featuring...
+echo "General Purpose support tool used to automate some aspects of handling config files. Featuring...
 
 Check and Read Config:
 Reads selected config files from a reference list and consolidate all the information within into an excel file.
@@ -22,22 +26,22 @@ Write Config From XLSX:
 From a reference xlsx file, write all the information within into new config files.
 
 Parse Src/Tgt:
-Checks all available reports in /app/CCR/P4SG_reports/src(tgt)_reports, creating config files (if missing) or updating unique key/mapping
+Checks all available reports in $REPORTDIR/src(tgt)_reports, creating config files (if missing) or updating unique key/mapping
 
 Update Name Parameters:
 Checks all Name related parameters in configs, changing them to match config basename where applicable.
 
 Update Split File Configs:
-Regenerates all split file configs in /app/CCR/P4SG_reports/(reports) from the main config file.
+Regenerates all split file configs in $REPORTDIR/(reports) from the main config file.
 
-NOTE: Any existing files from destination directory /home/ownccr/rgClient/ConfigTool will be wiped when starting the script'
+NOTE: Any existing files from destination directory $OUTDIR will be wiped when starting the script"
         
 echo -e "\r\nSelect a number option to proceed"
 
 select opt in "Check and Read Config" "Write Config From XLSX" "Parse Src/Tgt" "Update Name Parameters" "Update Split File Configs" "Cancel"; do
 
-mkdir -p /home/ownccr/rgClient/ConfigTool
-rm -f /home/ownccr/rgClient/ConfigTool/*
+mkdir -p $OUTDIR
+rm -f $OUTDIR/*
 
 
 case $opt in
@@ -50,7 +54,7 @@ case $opt in
         select subopt in "Ok" "Cancel"; do
         case $subopt in
             "Ok" )            
-            for file in /home/ownccr/rgClient/config/*.cfg
+            for file in $HOMEDIR/config/*.cfg
             do
                 readCFG $file
             done
@@ -58,7 +62,7 @@ case $opt in
             #Now make that csv into a useful excel file
             perl ConfigPrep.pm retrieveConfig > /dev/null
             rm -f configr.csv
-            echo "Config information of all available config files have been consolidated to /home/ownccr/rgClient/ConfigTool/configr.xlsx"
+            echo "Config information of all available config files have been consolidated to $OUTDIR/configr.xlsx"
             exit
             ;;
             "Cancel" )
@@ -91,13 +95,13 @@ case $opt in
         
             perl ConfigPrep.pm retrieveConfig > /dev/null
             
-            echo "Config information of all available config files have been consolidated to /home/ownccr/rgClient/ConfigTool/configr.xlsx"
+            echo "Config information of all available config files have been consolidated to $OUTDIR/configr.xlsx"
             
             #Log which files didnt get copied"
             if  [[ $(($(wc -l < configr.csv) - 1 )) -lt $loopcount ]]
             then
-                ls /home/ownccr/rgClient/ConfigTool/*.cfg | awk -F '[/.]' '{print $6}' > ct_copied.log
-                echo "Unavailable configs have been logged to /home/ownccr/rgClient/ct_missing.log"
+                ls $OUTDIR/*.cfg | awk -F '[/.]' '{print $6}' > ct_copied.log
+                echo "Unavailable configs have been logged to $HOMEDIR/ct_missing.log"
             fi
             
             rm -f configr.csv
@@ -118,7 +122,7 @@ case $opt in
         exit
     else
         perl ConfigPrep.pm writeToConfig $1
-        echo "New config files have been created based on $1 at /home/ownccr/rgClient/ConfigTool."
+        echo "New config files have been created based on $1 at $OUTDIR."
         exit
     fi
     ;;
@@ -132,7 +136,7 @@ case $opt in
     
     "Update Name Parameters" )
     echo "Checking name parameters for all config files..."
-    for cfg in /home/ownccr/rgClient/config/*.cfg
+    for cfg in $HOMEDIR/config/*.cfg
     do
         cfg_basename=$( awk -F '[/.]' '{print $6}' <<< $cfg )
         updateNames $cfg $cfg_basename "Source_File"
@@ -160,7 +164,7 @@ done
 function readCFG() {
 
     # file variable will vary depending on whether this function was invoked from ref file copy or entire copy
-    if [[ $1 != *"/home/ownccr/rgClient/config/"* ]]
+    if [[ $1 != *"$HOMEDIR/config/"* ]]
     then
         file=$1
     else
@@ -171,7 +175,7 @@ function readCFG() {
 #    echo "1 is $1"
 #    echo "file is $file"
     ((loopcount++))
-    foundfile=$( find /home/ownccr/rgClient/config -iname "$file" )
+    foundfile=$( find $HOMEDIR/config -iname "$file" )
 #    echo "file is $file, foundfile is $foundfile"
     if [[ -z $foundfile ]]
     then
@@ -181,7 +185,7 @@ function readCFG() {
     
     dos2unix -k -q $foundfile
     
-    cp $foundfile /home/ownccr/rgClient/ConfigTool
+    cp $foundfile $OUTDIR
     filename=$( cut -d "/" -f 6- <<< $foundfile | cut -d "." -f 1 )
 #    echo "filename is $filename"
 
@@ -236,12 +240,12 @@ function verifyST() {
     regen_count=0
     updated_count=0
     shopt -s nullglob
-    for files in /app/CCR/P4SG_Reports/src_reports/*.[cC][sS][vV] /app/CCR/P4SG_Reports/src_reports/*.txt
+    for files in $REPORTDIR/src_reports/*.[cC][sS][vV] $REPORTDIR/src_reports/*.txt
     do
         ((total_count++))
 #        echo "L150: file_s is $files"
         f_fullname=$( cut -d "/" -f 6 <<< $files )
-        filet="/app/CCR/P4SG_Reports/tgt_reports/$f_fullname"
+        filet="$REPORTDIR/tgt_reports/$f_fullname"
         f_basename=$( cut -d "." -f 1 <<< $f_fullname )
 #        echo "f_basename is $f_basename f_fullname is $f_fullname"
     
@@ -284,7 +288,7 @@ function verifyST() {
             fi
         
             # If config not already available, create them.
-            if [[ ! -f /home/ownccr/rgClient/config/$f_basename.cfg ]]
+            if [[ ! -f $HOMEDIR/config/$f_basename.cfg ]]
             then
                 echo "$f_basename: Config file not found. Generating new one from template..."
                 vST_sub_createcfg
@@ -296,12 +300,12 @@ function verifyST() {
                 ((regen_count++))
 
             else
-                cp /home/ownccr/rgClient/config/$f_basename.cfg /home/ownccr/rgClient/ConfigTool
+                cp $HOMEDIR/config/$f_basename.cfg $OUTDIR
             fi  #End if - config not found
             
         
-            sdel=$(grep -i "Source_separator" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | cut -d ":" -f 2)
-            tdel=$(grep -i "Target_separator" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | cut -d ":" -f 2)
+            sdel=$(grep -i "Source_separator" $OUTDIR/$f_basename.cfg | cut -d ":" -f 2)
+            tdel=$(grep -i "Target_separator" $OUTDIR/$f_basename.cfg | cut -d ":" -f 2)
             
             if [[ -z $sdel || -z $( head -n 1 $files.temp | grep $sdel ) || -z $tdel || -z $( head -n 1 $filet.temp | grep $tdel ) ]]
             then
@@ -309,8 +313,8 @@ function verifyST() {
                 vST_sub_createcfg
                 
                 #Once again try to get delim parameters
-                sdel=$(grep -i "Source_separator" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | cut -d ":" -f 2)
-                tdel=$(grep -i "Target_separator" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | cut -d ":" -f 2)
+                sdel=$(grep -i "Source_separator" $OUTDIR/$f_basename.cfg | cut -d ":" -f 2)
+                tdel=$(grep -i "Target_separator" $OUTDIR/$f_basename.cfg | cut -d ":" -f 2)
             fi
             
 #            echo "guess_head_src is $guess_head_src, guess_head_tgt is $guess_head_tgt"
@@ -330,15 +334,15 @@ function verifyST() {
             if [[ $full_map == "error" ]] #Can't get perl error codes to work somehow, this will do for now.
             then
                 echo "$f_basename: Unable to auto map all columns, manual edit recommended, Skipping"
-                rm /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
+                rm $OUTDIR/$f_basename.cfg
                 rm $files.temp $filet.temp
                 continue
             else
                 full_map=$( sed -e 's#:# => #g' -e 's#;$##' -e 's#;#\n#g' <<< $full_map )
                 
-                sed -i '24,$d' /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
-                echo "$full_map" >> /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
-#                perl -pi -e 'chomp if eof' /home/ownccr/rgClient/ConfigTool/$f_basename.cfg #Remove the newline at the end, though it doesn't matter
+                sed -i '24,$d' $OUTDIR/$f_basename.cfg
+                echo "$full_map" >> $OUTDIR/$f_basename.cfg
+#                perl -pi -e 'chomp if eof' $OUTDIR/$f_basename.cfg #Remove the newline at the end, though it doesn't matter
             fi
             
             #Evaluate unique keys
@@ -367,20 +371,20 @@ function verifyST() {
                 sed -i "${tp_line}s#Tolerance_Percentage:.*#Tolerance_Percentage:$tp_in#" ConfigTool/$f_basename.cfg
             fi
             
-            if [[ -f /home/ownccr/rgClient/config/$f_basename.cfg && ! -z $( diff /home/ownccr/rgClient/ConfigTool/$f_basename.cfg /home/ownccr/rgClient/config/$f_basename.cfg ) ]]
+            if [[ -f $HOMEDIR/config/$f_basename.cfg && ! -z $( diff $OUTDIR/$f_basename.cfg $HOMEDIR/config/$f_basename.cfg ) ]]
             then
-                echo "$f_basename: Config updated" | tee --append /home/ownccr/rgClient/ConfigTool/ct.log
-                diff /home/ownccr/rgClient/ConfigTool/$f_basename.cfg /home/ownccr/rgClient/config/$f_basename.cfg | grep '<' | sed -e 's#<#+#' >> /home/ownccr/rgClient/ConfigTool/ct.log
-                diff /home/ownccr/rgClient/config/$f_basename.cfg /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | grep '<' | sed -e 's#<#-#' >> /home/ownccr/rgClient/ConfigTool/ct.log
-                echo "" >> /home/ownccr/rgClient/ConfigTool/ct.log
+                echo "$f_basename: Config updated" | tee --append $OUTDIR/ct.log
+                diff $OUTDIR/$f_basename.cfg $HOMEDIR/config/$f_basename.cfg | grep '<' | sed -e 's#<#+#' >> $OUTDIR/ct.log
+                diff $HOMEDIR/config/$f_basename.cfg $OUTDIR/$f_basename.cfg | grep '<' | sed -e 's#<#-#' >> $OUTDIR/ct.log
+                echo "" >> $OUTDIR/ct.log
                 ((updated_count++))
-            elif [[ ! -f /home/ownccr/rgClient/config/$f_basename.cfg && -f /home/ownccr/rgClient/ConfigTool/$f_basename.cfg ]]
+            elif [[ ! -f $HOMEDIR/config/$f_basename.cfg && -f $OUTDIR/$f_basename.cfg ]]
             then
-                echo -e "$f_basename: Config generated from template\n" >> /home/ownccr/rgClient/ConfigTool/ct.log
+                echo -e "$f_basename: Config generated from template\n" >> $OUTDIR/ct.log
             else
                 # Since thee are no changes to config, there's no need to duplicate it and confuse things (Option 1 is made for this)
                 echo "$f_basename: no changes so removing"
-                rm /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
+                rm $OUTDIR/$f_basename.cfg
             fi
         
             rm $files.temp $filet.temp # Clear temporary files
@@ -398,13 +402,13 @@ function verifyST() {
 }
 
 vST_sub_createcfg () {
-    cp /home/ownccr/rgClient/config/template.txt /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
+    cp $HOMEDIR/config/template.txt $OUTDIR/$f_basename.cfg
     
     #Edit new config filename related parameters (grepping the header might be better instead of hardcoding sed)
-    sed -i "4s#\$#$f_fullname#" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg #Append to line corresponding to "Source_File" field
-    sed -i "5s#\$#$f_fullname#" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg # ~ "Target_File" field
-    sed -i "6s#\$#$f_basename#" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
-    sed -i "7s#\$#$f_basename#" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
+    sed -i "4s#\$#$f_fullname#" $OUTDIR/$f_basename.cfg #Append to line corresponding to "Source_File" field
+    sed -i "5s#\$#$f_fullname#" $OUTDIR/$f_basename.cfg # ~ "Target_File" field
+    sed -i "6s#\$#$f_basename#" $OUTDIR/$f_basename.cfg
+    sed -i "7s#\$#$f_basename#" $OUTDIR/$f_basename.cfg
     
     #Here i need to figure out algorithm to guess the seperators correctly
     
@@ -437,13 +441,13 @@ vST_sub_createcfg () {
         echo "$f_basename: Unable to find any common delimiter in tgt report"
         return 1
     else
-        sSep_line=$( grep -n "Source_Separator" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | cut -d ":" -f 1 )
-        tSep_line=$( grep -n "Target_Separator" /home/ownccr/rgClient/ConfigTool/$f_basename.cfg | cut -d ":" -f 1 )
+        sSep_line=$( grep -n "Source_Separator" $OUTDIR/$f_basename.cfg | cut -d ":" -f 1 )
+        tSep_line=$( grep -n "Target_Separator" $OUTDIR/$f_basename.cfg | cut -d ":" -f 1 )
         
 #                    echo "sSep is $sSep"
 #                    echo "tSep is $tSep"
         
-        sed -e "${sSep_line}s#\$#$sdel#" -e "${tSep_line}s#\$#$tdel#" -i /home/ownccr/rgClient/ConfigTool/$f_basename.cfg
+        sed -e "${sSep_line}s#\$#$sdel#" -e "${tSep_line}s#\$#$tdel#" -i $OUTDIR/$f_basename.cfg
         
         # Maybe here we can Try to guess unique keys and source key lookup
         
@@ -620,17 +624,17 @@ updateNames () {
 }
 
 update_split () {    
-    CONFIG_DIR="/home/ownccr/rgClient/config"
+    CONFIG_DIR="$HOMEDIR/config"
     # Search files with _aa in their names, and note down the base name, remove last 7 chars (typical 'report_aa.ext' -> 'report' ) then remove all '/' before files
-    if [[ ! -z $( find /app/CCR/P4SG_Reports/src_reports -maxdepth 2 -type f -name "*_aa.*" ) ]]
+    if [[ ! -z $( find $REPORTDIR/src_reports -maxdepth 2 -type f -name "*_aa.*" ) ]]
     then
-        split_list=$( find /app/CCR/P4SG_Reports/src_reports -maxdepth 2 -type f -name "*_aa.*" | sed 's#.\{7\}$##' | awk -F '/' '{print $NF}' )
+        split_list=$( find $REPORTDIR/src_reports -maxdepth 2 -type f -name "*_aa.*" | sed 's#.\{7\}$##' | awk -F '/' '{print $NF}' )
         for file in $split_list
         do
             if [[ -f $CONFIG_DIR/$file.cfg ]]
             then
 #                echo "L586: file is $file"
-                for split in $(find /app/CCR/P4SG_Reports/src_reports -maxdepth 2 -type f -name "${file}_*" | sed 's#.\{4\}$##' | awk -F '/' '{print $NF}' )
+                for split in $(find $REPORTDIR/src_reports -maxdepth 2 -type f -name "${file}_*" | sed 's#.\{4\}$##' | awk -F '/' '{print $NF}' )
                 do
 #                echo "L588: split is $split"
                     sed -e "s/$file/$split/g" $CONFIG_DIR/$file.cfg > $CONFIG_DIR/$split.cfg
